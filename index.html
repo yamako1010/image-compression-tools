@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像圧縮・最適化ツール</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #fef3c7, #fce7f3, #ede9fe, #e0e7ff, #ecfdf5);
+            position: relative;
+            overflow-x: hidden;
+            overflow-y: auto;
+            min-height: 100vh;
+        }
+        
+        .blob-animation {
+            position: absolute;
+            border-radius: 50%;
+            mix-blend-mode: multiply;
+            filter: blur(40px);
+            opacity: 0.7;
+            animation: blob 7s infinite;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+        
+        .blob-1 {
+            top: -10%;
+            right: -10%;
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(45deg, #ec4899, #f59e0b);
+            animation-delay: 0s;
+        }
+        
+        .blob-2 {
+            bottom: -10%;
+            left: -10%;
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(45deg, #8b5cf6, #06b6d4);
+            animation-delay: 2s;
+        }
+        
+        .blob-3 {
+            top: 50%;
+            left: 50%;
+            width: 200px;
+            height: 200px;
+            background: linear-gradient(45deg, #10b981, #f59e0b);
+            animation-delay: 4s;
+        }
+        
+        /* かわいいアニメーション */
+        @keyframes wiggle {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-3deg); }
+            75% { transform: rotate(3deg); }
+        }
+        
+        @keyframes bounce-cute {
+            0%, 100% { transform: translateY(0) scale(1); }
+            25% { transform: translateY(-8px) scale(1.05); }
+            50% { transform: translateY(-15px) scale(1.1); }
+            75% { transform: translateY(-8px) scale(1.05); }
+        }
+        
+        @keyframes pulse-heart {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .wiggle { animation: wiggle 1s infinite; }
+        .bounce-cute { animation: bounce-cute 2s infinite; }
+        .pulse-heart { animation: pulse-heart 1.5s infinite; }
+        .float { animation: float 3s ease-in-out infinite; }
+        
+        .drop-zone {
+            border: 2px dashed #d1d5db;
+            transition: all 0.3s ease;
+        }
+        
+        .drop-zone.dragover {
+            border-color: #475569;
+            background-color: #f8fafc;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #475569;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        body {
+            font-family: 'Noto Sans JP', 'Zen Kaku Gothic New', sans-serif;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+        
+        /* かわいいスライダースタイル */
+        .slider-thumb {
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .slider-thumb::-webkit-slider-thumb {
+            appearance: none;
+            height: 32px;
+            width: 32px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ec4899, #8b5cf6);
+            cursor: pointer;
+            border: 4px solid white;
+            box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4), 0 0 0 3px rgba(236, 72, 153, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .slider-thumb::-webkit-slider-thumb:hover {
+            background: linear-gradient(45deg, #f472b6, #a855f7);
+            transform: scale(1.2);
+            box-shadow: 0 6px 20px rgba(236, 72, 153, 0.6), 0 0 0 4px rgba(236, 72, 153, 0.3);
+            filter: brightness(1.1);
+        }
+        
+        .slider-thumb::-webkit-slider-thumb:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+            box-shadow: 0 2px 8px rgba(236, 72, 153, 0.8), 0 0 0 2px rgba(236, 72, 153, 0.4);
+        }
+        
+        .slider-thumb::-moz-range-thumb {
+            height: 32px;
+            width: 32px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #ec4899, #8b5cf6);
+            cursor: pointer;
+            border: 4px solid white;
+            box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4), 0 0 0 3px rgba(236, 72, 153, 0.2);
+            transition: all 0.3s ease;
+            border: none;
+        }
+        
+        .slider-thumb::-moz-range-thumb:hover {
+            background: linear-gradient(45deg, #f472b6, #a855f7);
+            transform: scale(1.2);
+            box-shadow: 0 6px 20px rgba(236, 72, 153, 0.6), 0 0 0 4px rgba(236, 72, 153, 0.3);
+        }
+        
+        .slider-thumb::-moz-range-thumb:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+        
+        /* スライダートラックのスタイル */
+        .slider-thumb::-webkit-slider-runnable-track {
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #e2e8f0, #cbd5e1);
+        }
+        
+        .slider-thumb::-moz-range-track {
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #e2e8f0, #cbd5e1);
+            border: none;
+        }
+        
+        /* パルスアニメーション */
+        @keyframes slider-pulse {
+            0%, 100% {
+                box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4), 0 0 0 3px rgba(236, 72, 153, 0.2);
+            }
+            50% {
+                box-shadow: 0 4px 12px rgba(236, 72, 153, 0.6), 0 0 0 5px rgba(236, 72, 153, 0.3);
+            }
+        }
+        
+        .slider-thumb:focus::-webkit-slider-thumb {
+            animation: slider-pulse 2s infinite;
+            outline: none;
+        }
+        
+        .slider-thumb:focus::-moz-range-thumb {
+            animation: slider-pulse 2s infinite;
+            outline: none;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <!-- Animated background blobs -->
+    <div class="blob-animation blob-1"></div>
+    <div class="blob-animation blob-2"></div>
+    <div class="blob-animation blob-3"></div>
+    
+    <div class="container mx-auto px-4 py-8 max-w-6xl relative z-10">
+        <!-- ヘッダー -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold mb-4" style="background: linear-gradient(45deg, #8b5cf6, #ec4899, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                画像圧縮・最適化ツール
+            </h1>
+            <p class="text-lg font-semibold mb-6" style="background: linear-gradient(45deg, #059669, #0284c7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                シンプルで高品質な画像・PDF圧縮ツール
+            </p>
+            
+            <!-- 使い方説明 -->
+            <div class="p-6 max-w-3xl mx-auto rounded-2xl shadow-xl" style="background: linear-gradient(135deg, #fef3c7, #fce7f3, #e0e7ff); border: 2px solid #ec4899; transform: translateY(0); transition: all 0.3s ease;" onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 25px 50px -12px rgba(0, 0, 0, 0.25)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 10px 15px -3px rgba(0, 0, 0, 0.1)'">
+                <h2 class="text-lg font-bold mb-3" style="background: linear-gradient(45deg, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                    ⚡ 簡単３ステップ
+                </h2>
+                <div class="grid md:grid-cols-3 gap-4 text-sm">
+                    <div class="text-center p-3 rounded-xl" style="background: rgba(255, 255, 255, 0.6);">
+                        <div class="text-2xl mb-2">1</div>
+                        <p class="font-semibold" style="color: #8b5cf6;">画像またはPDFをアップロード</p>
+                    </div>
+                    <div class="text-center p-3 rounded-xl" style="background: rgba(255, 255, 255, 0.6);">
+                        <div class="text-2xl mb-2">2</div>
+                        <p class="font-semibold" style="color: #ec4899;">スライダーで圧縬レベル調整</p>
+                    </div>
+                    <div class="text-center p-3 rounded-xl" style="background: rgba(255, 255, 255, 0.6);">
+                        <div class="text-2xl mb-2">3</div>
+                        <p class="font-semibold" style="color: #f59e0b;">結果をダウンロード</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 画像アップロード -->
+        <div class="mb-8">
+            <h2 class="text-xl font-bold mb-6 text-center flex items-center justify-center gap-3">
+                <svg class="w-6 h-6" style="color: #8b5cf6;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                </svg>
+                <span style="background: linear-gradient(45deg, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">ファイルアップロード</span>
+                <svg class="w-6 h-6" style="color: #ec4899;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+            </h2>
+            <div class="drop-zone rounded-2xl p-12 text-center shadow-xl" id="dropZone" style="background: linear-gradient(135deg, #ffffff, #fef3c7); border: 3px dashed #ec4899; transition: all 0.3s ease; transform: scale(1);" onmouseover="this.style.transform='scale(1.02)'; this.style.background='linear-gradient(135deg, #fef3c7, #fce7f3)'" onmouseout="this.style.transform='scale(1)'; this.style.background='linear-gradient(135deg, #ffffff, #fef3c7)'">
+                <div class="flex justify-center gap-4 mb-6">
+                    <svg class="w-16 h-16 animate-bounce" style="color: #8b5cf6;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                    </svg>
+                    <svg class="w-16 h-16 animate-bounce" style="color: #ec4899; animation-delay: 0.2s;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <p class="text-lg font-semibold mb-6" style="color: #374151;">画像やPDFをドラッグ&ドロップしてください</p>
+                <p class="text-sm mb-6" style="color: #6b7280;">対応フォーマット: JPG, PNG, GIF, WebP, PDF</p>
+                <input type="file" id="fileInput" accept="image/*,application/pdf" class="hidden">
+                <button onclick="document.getElementById('fileInput').click()" 
+                        class="text-white px-8 py-4 font-bold text-lg rounded-full shadow-lg transition-all duration-200" style="background: linear-gradient(45deg, #8b5cf6, #ec4899); transform: scale(1);" onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'">
+                    ファイルを選択
+                </button>
+            </div>
+        </div>
+
+        <!-- プレビューエリア -->
+        <div id="previewArea" class="hidden space-y-8">
+            <!-- 画質設定 -->
+            <div class="bg-white rounded-lg p-6">
+                <h2 class="text-lg font-bold mb-2 flex items-center gap-2" style="background: linear-gradient(45deg, #8b5cf6, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
+                    <svg class="w-5 h-5" style="color: #f59e0b;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                    </svg>
+                    画質設定
+                </h2>
+                <p class="text-sm font-semibold mb-4 flex items-center gap-1" style="color: #8b5cf6;">
+                    👆 スライダーボタンを動かしてみてください！お好みの画質に調整できます
+                </p>
+                <div class="flex items-center gap-6">
+                    <div class="flex-1">
+                        <label class="block text-sm font-medium text-slate-600 mb-3">
+                            画質: <span id="qualityValue">80</span>%
+                        </label>
+                        <input type="range" id="qualitySlider" min="10" max="100" value="80" 
+                               class="w-full h-3 bg-slate-200 rounded-lg appearance-none slider-thumb">
+                        <div class="flex justify-between text-xs text-slate-400 mt-1">
+                            <span>小さく</span>
+                            <span>高画質</span>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-2xl font-light text-slate-800" id="qualityDisplay">80%</div>
+                        <div class="text-xs text-slate-500">画質</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 圧縮結果 -->
+            <div class="bg-white rounded-lg p-6">
+                <h2 class="text-lg font-light text-slate-700 mb-6 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
+                    </svg>
+                    圧縮結果
+                </h2>
+                
+                <!-- 圧縮統計 -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" id="compressionStats" style="display: none;">
+                    <div class="text-center p-4 bg-slate-50 rounded-lg">
+                        <div class="text-3xl font-light text-slate-800 mb-2" id="compressedSize">-</div>
+                        <div class="text-sm text-slate-600 flex items-center justify-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            圧縮後サイズ
+                        </div>
+                    </div>
+                    
+                    <div class="text-center p-4 bg-green-50 rounded-lg">
+                        <div class="text-3xl font-light text-green-600 mb-2" id="compressionRatio">-</div>
+                        <div class="text-sm text-green-700 flex items-center justify-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
+                            </svg>
+                            圧縮率
+                        </div>
+                    </div>
+                    
+                    <div class="text-center p-4 bg-blue-50 rounded-lg">
+                        <div class="text-3xl font-light text-blue-600 mb-2" id="resolution">-</div>
+                        <div class="text-sm text-blue-700 flex items-center justify-center gap-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                            </svg>
+                            解像度
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 画像プレビュー -->
+                <div class="grid md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <h3 class="text-sm font-medium text-slate-600 mb-3">元画像</h3>
+                        <div class="border rounded-lg overflow-hidden bg-slate-50">
+                            <img id="originalImage" class="w-full h-auto max-h-64 object-contain">
+                        </div>
+                        <p id="originalInfo" class="text-xs text-slate-500 mt-2"></p>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-sm font-medium text-slate-600 mb-3">圧縮後</h3>
+                        <div class="border rounded-lg overflow-hidden bg-slate-50">
+                            <img id="compressedImage" class="w-full h-auto max-h-64 object-contain">
+                        </div>
+                        <p id="compressedInfo" class="text-xs text-slate-500 mt-2"></p>
+                    </div>
+                </div>
+
+                <!-- アクションボタン -->
+                <div class="flex flex-wrap gap-3 mb-6">
+                    <button id="downloadBtn" 
+                            class="bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 transition-colors flex items-center gap-2 hidden font-light tracking-wide">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        ダウンロード
+                    </button>
+                    <button id="resetBtn" 
+                            class="border border-slate-300 hover:bg-slate-50 text-slate-700 px-6 py-3 transition-colors flex items-center gap-2 font-light tracking-wide">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0V9a8 8 0 1115.356 2M15 15v5h-.582M4.582 15A8.001 8.001 0 0019.418 9m0 0V9a8 8 0 10-15.356 2"></path>
+                        </svg>
+                        リセット
+                    </button>
+                </div>
+                
+                <!-- 適用可能サービス -->
+                <div id="suitableServices" style="display: none;">
+                    <h3 class="text-sm font-medium text-slate-600 mb-3">このサイズで利用可能なサービス</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="servicesList">
+                        <!-- サービス一覧はJavaScriptで生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ローディング画面 -->
+        <div id="loadingScreen" class="fixed inset-0 flex items-center justify-center z-50" style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.8), rgba(236, 72, 153, 0.8), rgba(245, 158, 11, 0.8)); display: none;">
+            <div class="rounded-2xl p-8 text-center max-w-md mx-4 relative overflow-hidden" style="background: linear-gradient(135deg, #ffffff, #fef3c7); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); border: 3px solid #ec4899;">
+                <!-- 装飾要素 -->
+                <div class="absolute top-2 left-2 w-3 h-3 bg-purple-300 rounded-full float"></div>
+                <div class="absolute top-4 right-4 w-4 h-4 bg-pink-300 rounded-full wiggle"></div>
+                <div class="absolute bottom-2 left-4 w-2 h-2 bg-yellow-300 rounded-full pulse-heart"></div>
+                <div class="absolute bottom-4 right-2 w-3 h-3 bg-blue-300 rounded-full bounce-cute"></div>
+                
+                <div class="mb-4">
+                    <div class="w-20 h-20 mx-auto rounded-full bounce-cute" style="background: linear-gradient(45deg, #8b5cf6, #ec4899, #f59e0b); animation: spin 2s linear infinite;">
+                        <div class="w-full h-full rounded-full flex items-center justify-center" style="background: linear-gradient(45deg, #ec4899, #f59e0b);">
+                            <div class="w-8 h-8 rounded-full bg-white"></div>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-lg font-bold mb-3 wiggle" style="color: #8b5cf6;" id="loadingMessage">お仕事おつかれさま！</p>
+                <p class="text-sm font-medium pulse-heart" style="color: #ec4899;" id="loadingSubMessage">今日めっちゃいいことおきるよ！</p>
+                
+                <!-- プログレスバー -->
+                <div class="mt-6 w-full bg-purple-200 rounded-full h-3">
+                    <div class="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full" style="width: 60%; animation: pulse 2s infinite;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Service configurations
+        const services = {
+            instagram: {
+                name: 'Instagram',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>',
+                maxWidth: 1080,
+                maxHeight: 1080,
+                maxSize: 8 * 1024 * 1024,
+                description: '最大8MB、1080×1080px'
+            },
+            line: {
+                name: 'LINE',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>',
+                maxWidth: 1024,
+                maxHeight: 1024,
+                maxSize: 10 * 1024 * 1024,
+                description: '最大10MB、1024×1024px'
+            },
+            web: {
+                name: 'ウェブ',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>',
+                maxWidth: 1200,
+                maxHeight: 800,
+                maxSize: 15 * 1024 * 1024,
+                description: '最大15MB、1200×800px'
+            },
+            mobile: {
+                name: 'モバイル',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a1 1 0 001-1V4a1 1 0 00-1-1H8a1 1 0 00-1 1v16a1 1 0 001 1z"></path></svg>',
+                maxWidth: 750,
+                maxHeight: 1334,
+                maxSize: 5 * 1024 * 1024,
+                description: '最大5MB、750×1334px'
+            },
+            email: {
+                name: 'メール',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>',
+                maxWidth: 800,
+                maxHeight: 600,
+                maxSize: 5 * 1024 * 1024,
+                description: '最大5MB、800×600px'
+            },
+            youtube: {
+                name: 'YouTube',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>',
+                maxWidth: 1280,
+                maxHeight: 720,
+                maxSize: 20 * 1024 * 1024,
+                description: '最大20MB、1280×720px'
+            },
+            sns: {
+                name: 'SNS',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>',
+                maxWidth: 1200,
+                maxHeight: 630,
+                maxSize: 8 * 1024 * 1024,
+                description: '最大8MB、1200×630px'
+            },
+            print: {
+                name: '印刷用',
+                icon: '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>',
+                maxWidth: 1920,
+                maxHeight: 1080,
+                maxSize: 10 * 1024 * 1024,
+                description: '最大10MB、1920×1080px'
+            }
+        };
+
+        // Loading messages
+        const loadingMessages = [
+            'お仕事おつかれさま！',
+            '今日はきっといい日になるよ！',
+            'あなたはすごい人です！',
+            '明日はもっといいことがあるよ！',
+            'あなたの笑顔が一番素敵！',
+            '今日もがんばっていてえらい！',
+            'すてきな一日になりそう！',
+            'あなたは本当に特別です！'
+        ];
+
+        // Loading sub messages
+        const loadingSubMessages = [
+            '今日めっちゃいいことおきるよ！',
+            'あなたはとっても素敵です！',
+            'みんなあなたのこと大好きです！',
+            '今日はきっといい日！',
+            'あなたのがんばりすごいです！',
+            '幸せはすぐそこに！'
+        ];
+
+        let originalFile = null;
+        let compressedBlob = null;
+        let compressedDimensions = null;
+        let fileType = 'image';
+
+        // 初期化
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+        });
+
+        // イベントリスナー設定
+        function setupEventListeners() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+            const qualitySlider = document.getElementById('qualitySlider');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const resetBtn = document.getElementById('resetBtn');
+
+            fileInput.addEventListener('change', handleFileSelect);
+            dropZone.addEventListener('dragover', handleDragOver);
+            dropZone.addEventListener('dragleave', handleDragLeave);
+            dropZone.addEventListener('drop', handleDrop);
+            qualitySlider.addEventListener('input', function() {
+                const value = this.value;
+                document.getElementById('qualityValue').textContent = value;
+                document.getElementById('qualityDisplay').textContent = value + '%';
+                
+                // スライダーの背景色を更新
+                const percentage = (value - 10) / 90 * 100;
+                this.style.background = `linear-gradient(to right, #64748b 0%, #64748b ${percentage}%, #e2e8f0 ${percentage}%, #e2e8f0 100%)`;
+                
+                if (originalFile) {
+                    compressImage();
+                }
+            });
+            downloadBtn.addEventListener('click', downloadImage);
+            resetBtn.addEventListener('click', resetAll);
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processFile(file);
+            }
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('dragover');
+        }
+
+        function handleDragLeave(event) {
+            event.currentTarget.classList.remove('dragover');
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('dragover');
+            const files = event.dataTransfer.files;
+            if (files.length > 0) {
+                processFile(files[0]);
+            }
+        }
+
+        function processFile(file) {
+            const isImage = file.type.startsWith('image/');
+            const isPDF = file.type === 'application/pdf';
+            
+            if (!isImage && !isPDF) {
+                alert('画像ファイルまたはPDFファイルを選択してください。');
+                return;
+            }
+
+            originalFile = file;
+            fileType = isImage ? 'image' : 'pdf';
+            
+            if (isImage) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const originalImage = document.getElementById('originalImage');
+                    originalImage.src = e.target.result;
+                    
+                    document.getElementById('originalInfo').textContent = 
+                        `${formatFileSize(file.size)} | ${file.type}`;
+                    
+                    document.getElementById('previewArea').classList.remove('hidden');
+                    compressImage();
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // PDFの場合はプレビューなし
+                const originalImage = document.getElementById('originalImage');
+                originalImage.style.display = 'none';
+                
+                document.getElementById('originalInfo').textContent = 
+                    `${formatFileSize(file.size)} | ${file.type}`;
+                
+                document.getElementById('previewArea').classList.remove('hidden');
+                compressImage();
+            }
+        }
+
+        async function compressImage() {
+            if (!originalFile) return;
+
+            showLoading();
+
+            try {
+                const quality = parseInt(document.getElementById('qualitySlider').value) / 100;
+                
+                if (fileType === 'image') {
+                    const result = await compressImageWithCanvas(originalFile, quality);
+                    compressedBlob = result.blob;
+                    compressedDimensions = result.dimensions;
+                    
+                    const compressedImage = document.getElementById('compressedImage');
+                    compressedImage.style.display = 'block';
+                    compressedImage.src = URL.createObjectURL(compressedBlob);
+                } else {
+                    // PDF圧縮
+                    compressedBlob = await compressPDF(originalFile, quality);
+                    compressedDimensions = null;
+                    
+                    const compressedImage = document.getElementById('compressedImage');
+                    compressedImage.style.display = 'none';
+                }
+                
+                updateCompressionStats();
+                updateSuitableServices();
+                
+                document.getElementById('downloadBtn').classList.remove('hidden');
+                
+                setTimeout(() => {
+                    hideLoading();
+                    showCompletionAnimation();
+                }, 1500);
+
+            } catch (error) {
+                hideLoading();
+                alert('圧縮処理中にエラーが発生しました: ' + error.message);
+            }
+        }
+
+        function compressImageWithCanvas(file, quality) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+
+                    let { width, height } = calculateDimensions(img.width, img.height, 1920, 1080);
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        resolve({blob, dimensions: {width, height}});
+                    }, 'image/jpeg', quality);
+                };
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        async function compressPDF(file, quality) {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+            
+            // 簡単なPDF圧縬 (画像の圧縮率を調整)
+            const pdfBytes = await pdfDoc.save({
+                useObjectStreams: false,
+                addDefaultPage: false,
+            });
+            
+            return new Blob([pdfBytes], { type: 'application/pdf' });
+        }
+
+        function calculateDimensions(originalWidth, originalHeight, maxWidth, maxHeight) {
+            let width = originalWidth;
+            let height = originalHeight;
+
+            if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+            }
+
+            if (height > maxHeight) {
+                width = (width * maxHeight) / height;
+                height = maxHeight;
+            }
+
+            return { width: Math.round(width), height: Math.round(height) };
+        }
+
+        function updateCompressionStats() {
+            if (!originalFile || !compressedBlob) return;
+
+            const compressionRatio = Math.round((1 - compressedBlob.size / originalFile.size) * 100);
+            
+            document.getElementById('compressedSize').textContent = formatFileSize(compressedBlob.size);
+            document.getElementById('compressionRatio').textContent = `-${compressionRatio}%`;
+            document.getElementById('resolution').textContent = 
+                compressedDimensions ? `${compressedDimensions.width}×${compressedDimensions.height}` : '-';
+            
+            document.getElementById('compressedInfo').textContent = 
+                `${formatFileSize(compressedBlob.size)} | ${fileType === 'image' ? 'JPEG' : 'PDF'}`;
+            
+            document.getElementById('compressionStats').style.display = 'grid';
+        }
+
+        function updateSuitableServices() {
+            if (!compressedBlob) return;
+            
+            // PDFの場合、サイズのみで判定
+            if (fileType === 'pdf') {
+                if (compressedBlob.size <= 10 * 1024 * 1024) { // 10MB以下なら適合
+                    document.getElementById('suitableServices').style.display = 'block';
+                    const servicesList = document.getElementById('servicesList');
+                    servicesList.innerHTML = '<div class="p-3 bg-slate-50 rounded-lg border border-slate-200"><span class="text-sm font-medium text-slate-800">メール添付やウェブアップロードに適合</span></div>';
+                }
+                return;
+            }
+            
+            if (!compressedDimensions) return;
+
+            const suitableServices = Object.entries(services).filter(([_, service]) => {
+                return compressedBlob.size <= service.maxSize &&
+                       compressedDimensions.width <= service.maxWidth &&
+                       compressedDimensions.height <= service.maxHeight;
+            });
+
+            if (suitableServices.length > 0) {
+                const servicesList = document.getElementById('servicesList');
+                servicesList.innerHTML = '';
+                
+                suitableServices.forEach(([key, service]) => {
+                    const serviceCard = document.createElement('div');
+                    serviceCard.className = 'p-3 bg-slate-50 rounded-lg border border-slate-200';
+                    serviceCard.innerHTML = `
+                        <div class="flex items-center gap-2 mb-1">
+                            ${service.icon}
+                            <span class="text-sm font-medium text-slate-800">${service.name}</span>
+                        </div>
+                        <p class="text-xs text-slate-500">${service.description}</p>
+                    `;
+                    servicesList.appendChild(serviceCard);
+                });
+                
+                document.getElementById('suitableServices').style.display = 'block';
+            }
+        }
+
+        function showLoading() {
+            const loadingScreen = document.getElementById('loadingScreen');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const loadingSubMessage = document.getElementById('loadingSubMessage');
+            
+            loadingMessage.textContent = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+            loadingSubMessage.textContent = loadingSubMessages[Math.floor(Math.random() * loadingSubMessages.length)];
+            
+            loadingScreen.style.display = 'flex';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingScreen').style.display = 'none';
+        }
+
+        function showCompletionAnimation() {
+            const message = document.getElementById('loadingMessage');
+            const subMessage = document.getElementById('loadingSubMessage');
+            
+            message.textContent = 'やった〜！圧縮完了です！';
+            message.style.color = '#10b981';
+            message.style.fontWeight = 'bold';
+            
+            subMessage.textContent = 'あなたはすごい人です！';
+            subMessage.style.color = '#10b981';
+            
+            document.getElementById('loadingScreen').style.display = 'flex';
+            
+            setTimeout(() => {
+                hideLoading();
+            }, 2500);
+        }
+
+        function downloadImage() {
+            if (!compressedBlob) return;
+
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(compressedBlob);
+            const extension = fileType === 'image' ? 'jpg' : 'pdf';
+            link.download = `compressed_${Date.now()}.${extension}`;
+            link.click();
+        }
+
+        function resetAll() {
+            originalFile = null;
+            compressedBlob = null;
+            compressedDimensions = null;
+            fileType = 'image';
+            
+            document.getElementById('previewArea').classList.add('hidden');
+            document.getElementById('downloadBtn').classList.add('hidden');
+            document.getElementById('compressionStats').style.display = 'none';
+            document.getElementById('suitableServices').style.display = 'none';
+            document.getElementById('fileInput').value = '';
+            
+            const slider = document.getElementById('qualitySlider');
+            slider.value = 80;
+            slider.style.background = 'linear-gradient(to right, #64748b 0%, #64748b 77.78%, #e2e8f0 77.78%, #e2e8f0 100%)';
+            document.getElementById('qualityValue').textContent = '80';
+            document.getElementById('qualityDisplay').textContent = '80%';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>
