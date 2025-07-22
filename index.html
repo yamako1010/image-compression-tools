@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #fef3c7, #fce7f3, #ede9fe, #e0e7ff, #ecfdf5);
@@ -209,6 +210,28 @@
             animation: slider-pulse 2s infinite;
             outline: none;
         }
+        
+        /* 成功アニメーション */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .compression-success {
+            animation: shake 0.5s ease-in-out;
+        }
     </style>
 </head>
 <body class="gradient-bg min-h-screen">
@@ -289,8 +312,11 @@
                     </svg>
                     画質設定
                 </h2>
-                <p class="text-sm font-semibold mb-4 flex items-center gap-1" style="color: #8b5cf6;">
-                    👆 スライダーボタンを動かしてみてください！お好みの画質に調整できます
+                <p class="text-sm font-semibold mb-4 flex items-center gap-2" style="color: #8b5cf6;">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3.5M3 16.5h18"></path>
+                    </svg>
+                    スライダーでお好みの画質に調整できます
                 </p>
                 <div class="flex items-center gap-6">
                     <div class="flex-1">
@@ -320,35 +346,59 @@
                     圧縮結果
                 </h2>
                 
-                <!-- 圧縮統計 -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" id="compressionStats" style="display: none;">
-                    <div class="text-center p-4 bg-slate-50 rounded-lg">
-                        <div class="text-3xl font-light text-slate-800 mb-2" id="compressedSize">-</div>
-                        <div class="text-sm text-slate-600 flex items-center justify-center gap-1">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                <!-- 圧縮結果の視覚的表示 -->
+                <div id="compressionStats" style="display: none;" class="mb-8">
+                    <!-- 節約容量の大きな表示 -->
+                    <div id="savingsDisplay" class="text-center mb-6 p-6 rounded-2xl" style="background: linear-gradient(135deg, #ecfdf5, #d1fae5); border: 2px solid #10b981;">
+                        <div class="flex items-center justify-center gap-3 mb-2">
+                            <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
                             </svg>
-                            圧縮後サイズ
+                            <h3 class="text-2xl font-bold text-emerald-800">容量削減効果</h3>
+                        </div>
+                        <div id="savingsAmount" class="text-4xl font-bold text-emerald-700 mb-2">-</div>
+                        <div id="savingsPercentage" class="text-lg text-emerald-600 font-medium">-</div>
+                        <div class="mt-4">
+                            <div class="bg-white/60 rounded-full h-4 overflow-hidden">
+                                <div id="savingsBar" class="h-full bg-gradient-to-r from-emerald-500 to-green-500 transition-all duration-1000" style="width: 0%;"></div>
+                            </div>
+                            <div class="flex justify-between text-sm text-emerald-600 mt-2">
+                                <span>元のサイズ</span>
+                                <span id="originalSizeLabel">-</span>
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="text-center p-4 bg-green-50 rounded-lg">
-                        <div class="text-3xl font-light text-green-600 mb-2" id="compressionRatio">-</div>
-                        <div class="text-sm text-green-700 flex items-center justify-center gap-1">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
-                            </svg>
-                            圧縮率
+                    <!-- 詳細統計 -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="text-center p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="flex items-center justify-center mb-2">
+                                <svg class="w-5 h-5 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                <span class="text-sm font-medium text-gray-600">圧縮後</span>
+                            </div>
+                            <div class="text-2xl font-bold text-blue-600" id="compressedSize">-</div>
                         </div>
-                    </div>
-                    
-                    <div class="text-center p-4 bg-blue-50 rounded-lg">
-                        <div class="text-3xl font-light text-blue-600 mb-2" id="resolution">-</div>
-                        <div class="text-sm text-blue-700 flex items-center justify-center gap-1">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                            </svg>
-                            解像度
+                        
+                        <div class="text-center p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="flex items-center justify-center mb-2">
+                                <svg class="w-5 h-5 text-purple-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"></path>
+                                </svg>
+                                <span class="text-sm font-medium text-gray-600">圧縮率</span>
+                            </div>
+                            <div class="text-2xl font-bold text-purple-600" id="compressionRatio">-</div>
+                        </div>
+                        
+                        <div class="text-center p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+                            <div class="flex items-center justify-center mb-2">
+                                <svg class="w-5 h-5 text-indigo-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <span class="text-sm font-medium text-gray-600">解像度</span>
+                            </div>
+                            <div class="text-2xl font-bold text-indigo-600" id="resolution">-</div>
                         </div>
                     </div>
                 </div>
@@ -421,8 +471,9 @@
                 
                 <!-- プログレスバー -->
                 <div class="mt-6 w-full bg-purple-200 rounded-full h-3">
-                    <div class="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full" style="width: 60%; animation: pulse 2s infinite;"></div>
+                    <div id="progressBar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-300" style="width: 0%;"></div>
                 </div>
+                <div id="progressText" class="text-xs text-purple-600 text-center mt-2 font-medium">0%</div>
             </div>
         </div>
     </div>
@@ -629,13 +680,20 @@
                 const quality = parseInt(document.getElementById('qualitySlider').value) / 100;
                 
                 if (fileType === 'image') {
+                    updateLoadingMessage('画像を圧縮中...');
+                    updateProgress(30);
+                    
                     const result = await compressImageWithCanvas(originalFile, quality);
                     compressedBlob = result.blob;
                     compressedDimensions = result.dimensions;
                     
+                    updateProgress(70);
+                    
                     const compressedImage = document.getElementById('compressedImage');
                     compressedImage.style.display = 'block';
                     compressedImage.src = URL.createObjectURL(compressedBlob);
+                    
+                    updateProgress(100);
                 } else {
                     // PDF圧縮
                     compressedBlob = await compressPDF(originalFile, quality);
@@ -657,6 +715,7 @@
 
             } catch (error) {
                 hideLoading();
+                updateLoadingMessage('エラー: ' + error.message);
                 alert('圧縮処理中にエラーが発生しました: ' + error.message);
             }
         }
@@ -683,16 +742,88 @@
         }
 
         async function compressPDF(file, quality) {
+            updateLoadingMessage('PDFを読み込み中...');
+            
             const arrayBuffer = await file.arrayBuffer();
-            const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
             
-            // 簡単なPDF圧縬 (画像の圧縮率を調整)
-            const pdfBytes = await pdfDoc.save({
-                useObjectStreams: false,
-                addDefaultPage: false,
-            });
-            
-            return new Blob([pdfBytes], { type: 'application/pdf' });
+            try {
+                // PDF.js workerの設定
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+                
+                // PDFを読み込み
+                const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+                const newPdfDoc = await PDFLib.PDFDocument.create();
+                
+                updateLoadingMessage(`${pdf.numPages}ページのPDFを圧縮中...`);
+                
+                const totalPages = pdf.numPages;
+                let processedSize = 0;
+                let originalEstimatedSize = file.size;
+                
+                for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                    updateLoadingMessage(`ページ ${pageNum}/${totalPages} を処理中...`);
+                    updateProgress((pageNum / totalPages) * 80); // 80%まではページ処理
+                    
+                    const page = await pdf.getPage(pageNum);
+                    
+                    // 品質に応じてスケールを調整（低品質ではサイズを小さく）
+                    const scale = quality > 0.7 ? 2.0 : quality > 0.4 ? 1.5 : 1.0;
+                    const viewport = page.getViewport({ scale: scale });
+                    
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport,
+                    };
+                    
+                    await page.render(renderContext).promise;
+                    
+                    // 指定された品質でJPEG圧縮
+                    const imageBlob = await new Promise((resolve) => {
+                        canvas.toBlob((blob) => {
+                            resolve(blob);
+                        }, 'image/jpeg', quality);
+                    });
+                    
+                    // PDFに画像を追加
+                    const imageBytes = await imageBlob.arrayBuffer();
+                    const image = await newPdfDoc.embedJpg(imageBytes);
+                    
+                    const newPage = newPdfDoc.addPage([image.width, image.height]);
+                    newPage.drawImage(image, {
+                        x: 0,
+                        y: 0,
+                        width: image.width,
+                        height: image.height,
+                    });
+                    
+                    processedSize += imageBlob.size;
+                }
+                
+                updateLoadingMessage('PDFを保存中...');
+                updateProgress(90);
+                
+                const pdfBytes = await newPdfDoc.save();
+                updateProgress(100);
+                
+                return new Blob([pdfBytes], { type: 'application/pdf' });
+                
+            } catch (error) {
+                console.error('PDF compression error:', error);
+                updateLoadingMessage('エラーが発生しました: ' + error.message);
+                
+                // フォールバック: 単純な再保存
+                const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                const pdfBytes = await pdfDoc.save({
+                    useObjectStreams: true, // 圧縮を有効に
+                    addDefaultPage: false,
+                });
+                return new Blob([pdfBytes], { type: 'application/pdf' });
+            }
         }
 
         function calculateDimensions(originalWidth, originalHeight, maxWidth, maxHeight) {
@@ -716,16 +847,75 @@
             if (!originalFile || !compressedBlob) return;
 
             const compressionRatio = Math.round((1 - compressedBlob.size / originalFile.size) * 100);
+            const sizeDifference = originalFile.size - compressedBlob.size;
+            const compressionEffective = compressionRatio > 0;
             
+            // 節約容量の大きな表示
+            const savingsDisplay = document.getElementById('savingsDisplay');
+            const savingsAmount = document.getElementById('savingsAmount');
+            const savingsPercentage = document.getElementById('savingsPercentage');
+            const savingsBar = document.getElementById('savingsBar');
+            const originalSizeLabel = document.getElementById('originalSizeLabel');
+            
+            if (compressionEffective) {
+                // 成功時の表示
+                savingsDisplay.style.background = 'linear-gradient(135deg, #ecfdf5, #d1fae5)';
+                savingsDisplay.style.borderColor = '#10b981';
+                
+                savingsAmount.textContent = formatFileSize(sizeDifference);
+                savingsAmount.style.color = '#047857';
+                
+                // 節約率と元サイズを表示
+                savingsPercentage.textContent = `元サイズから ${compressionRatio}% 削減`;
+                originalSizeLabel.textContent = formatFileSize(originalFile.size);
+                
+                // プログレスバーのアニメーション
+                setTimeout(() => {
+                    savingsBar.style.width = compressionRatio + '%';
+                }, 200);
+                
+            } else {
+                // 圧縬効果なしの表示
+                savingsDisplay.style.background = 'linear-gradient(135deg, #fef3c7, #fed7aa)';
+                savingsDisplay.style.borderColor = '#f59e0b';
+                
+                savingsAmount.textContent = '圧縮効果なし';
+                savingsAmount.style.color = '#d97706';
+                
+                savingsPercentage.textContent = 'ファイルサイズは変わりません';
+                originalSizeLabel.textContent = formatFileSize(originalFile.size);
+                
+                savingsBar.style.width = '0%';
+            }
+            
+            // 詳細統計
             document.getElementById('compressedSize').textContent = formatFileSize(compressedBlob.size);
-            document.getElementById('compressionRatio').textContent = `-${compressionRatio}%`;
+            
+            const ratioElement = document.getElementById('compressionRatio');
+            ratioElement.textContent = compressionEffective ? `-${compressionRatio}%` : '変化なし';
+            
             document.getElementById('resolution').textContent = 
-                compressedDimensions ? `${compressedDimensions.width}×${compressedDimensions.height}` : '-';
+                compressedDimensions ? `${compressedDimensions.width}×${compressedDimensions.height}` : 
+                (fileType === 'pdf' ? 'PDFページ' : '-');
             
-            document.getElementById('compressedInfo').textContent = 
-                `${formatFileSize(compressedBlob.size)} | ${fileType === 'image' ? 'JPEG' : 'PDF'}`;
+            // 詳細情報
+            const detailedInfo = `元: ${formatFileSize(originalFile.size)} → 結果: ${formatFileSize(compressedBlob.size)}`;
+            if (compressionEffective) {
+                document.getElementById('compressedInfo').innerHTML = 
+                    `${detailedInfo}<br><strong style="color: #059669;">${formatFileSize(sizeDifference)} 節約できました</strong>`;
+            } else {
+                document.getElementById('compressedInfo').innerHTML = 
+                    `${detailedInfo}<br><span style="color: #d97706;">圧縮効果がありませんでした</span>`;
+            }
             
-            document.getElementById('compressionStats').style.display = 'grid';
+            document.getElementById('compressionStats').style.display = 'block';
+            
+            // 成功アニメーション
+            if (compressionEffective) {
+                setTimeout(() => {
+                    showSuccessAnimation(compressionRatio, formatFileSize(sizeDifference));
+                }, 800);
+            }
         }
 
         function updateSuitableServices() {
@@ -778,7 +968,26 @@
             loadingMessage.textContent = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
             loadingSubMessage.textContent = loadingSubMessages[Math.floor(Math.random() * loadingSubMessages.length)];
             
+            // プログレスをリセット
+            updateProgress(0);
+            
             loadingScreen.style.display = 'flex';
+        }
+        
+        function updateLoadingMessage(message) {
+            const loadingMessage = document.getElementById('loadingMessage');
+            if (loadingMessage) {
+                loadingMessage.textContent = message;
+            }
+        }
+        
+        function updateProgress(percentage) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            if (progressBar && progressText) {
+                progressBar.style.width = percentage + '%';
+                progressText.textContent = Math.round(percentage) + '%';
+            }
         }
 
         function hideLoading() {
@@ -801,6 +1010,27 @@
             setTimeout(() => {
                 hideLoading();
             }, 2500);
+        }
+        
+        function showSuccessAnimation(compressionRatio, savedSize) {
+            // 成功メッセージを一時的に表示
+            const successDiv = document.createElement('div');
+            successDiv.innerHTML = `
+                <div style="position: fixed; top: 20px; right: 20px; z-index: 1000; background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 20px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); animation: slideInRight 0.5s ease;">
+                    <div style="display: flex; items-center: align-items: center; font-size: 18px; font-weight: bold; margin-bottom: 8px;">
+                        <svg style="width: 24px; height: 24px; margin-right: 8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        圧縮成功！
+                    </div>
+                    <div style="font-size: 14px; margin-left: 32px;">${compressionRatio}% 圧縮して<br><strong>${savedSize} 節約できました</strong></div>
+                </div>
+            `;
+            document.body.appendChild(successDiv);
+            
+            setTimeout(() => {
+                successDiv.remove();
+            }, 5000);
         }
 
         function downloadImage() {

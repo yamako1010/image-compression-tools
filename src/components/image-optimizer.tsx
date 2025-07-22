@@ -13,18 +13,22 @@ import {
   Camera,
   Printer,
   RotateCcw,
-  Loader2,
   TrendingDown,
   Zap,
   FileImage,
-  FileText,
-  Sparkles
+  FileText
 } from "lucide-react";
 import { PDFDocument } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// PDF.js worker設定
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+}
 
 interface ServiceConfig {
   name: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   maxWidth: number;
   maxHeight: number;
   maxSize: number;
@@ -103,6 +107,8 @@ export function ImageOptimizer() {
   const [compressedBlob, setCompressedBlob] = useState<Blob | null>(null);
   const [quality, setQuality] = useState(80);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingMessage, setProcessingMessage] = useState('');
   const [originalPreview, setOriginalPreview] = useState<string>('');
   const [compressedPreview, setCompressedPreview] = useState<string>('');
   const [compressedDimensions, setCompressedDimensions] = useState<{width: number, height: number} | null>(null);
@@ -150,29 +156,41 @@ export function ImageOptimizer() {
           return;
         }
 
-        // 基本的なリサイズ（最大1920x1080で維持）
-        const { width, height } = calculateDimensions(
-          img.width,
-          img.height,
-          1920,
-          1080
-        );
+        // スマートリサイズ: 元サイズが小さい場合はそのまま維持
+        let targetWidth = img.width;
+        let targetHeight = img.height;
+        
+        // 大きすぎる場合のみリサイズ
+        if (img.width > 1920 || img.height > 1080) {
+          const dimensions = calculateDimensions(img.width, img.height, 1920, 1080);
+          targetWidth = dimensions.width;
+          targetHeight = dimensions.height;
+        }
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
 
-        ctx.drawImage(img, 0, 0, width, height);
+        // 高品質レンダリングのための設定
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        
+        // アンチエイリアシングを適用
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+        // 出力フォーマットを元ファイルに合わせる
+        const outputFormat = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const outputQuality = file.type === 'image/png' ? 1 : quality / 100;
 
         canvas.toBlob(
           (blob) => {
             if (blob) {
-              resolve({blob, dimensions: {width, height}});
+              resolve({blob, dimensions: {width: targetWidth, height: targetHeight}});
             } else {
               reject(new Error('Failed to compress image'));
             }
           },
-          'image/jpeg',
-          quality / 100
+          outputFormat,
+          outputQuality
         );
       };
       img.onerror = reject;
@@ -182,15 +200,80 @@ export function ImageOptimizer() {
 
   const compressPDF = useCallback(async (file: File, quality: number): Promise<Blob> => {
     const arrayBuffer = await file.arrayBuffer();
-    const pdfDoc = await PDFDocument.load(arrayBuffer);
     
-    // 簡単なPDF圧縮 (画像の圧縮率を調整)
-    const pdfBytes = await pdfDoc.save({
-      useObjectStreams: false,
-      addDefaultPage: false,
-    });
-    
-    return new Blob([pdfBytes], { type: 'application/pdf' });
+    try {
+      setProcessingMessage('PDFを読み込み中...');
+      setProcessingProgress(10);
+      
+      // PDF.jsを使ってPDFを読み込み、各ページを画像として抽出
+      const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+      const pdfDoc = await PDFDocument.create();
+      
+      setProcessingMessage(`${pdf.numPages}ページのPDFを圧縮中...`);
+      setProcessingProgress(20);
+      
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const progress = 20 + (pageNum / pdf.numPages) * 70;
+        setProcessingProgress(progress);
+        setProcessingMessage(`ページ ${pageNum}/${pdf.numPages} を処理中...`);
+        
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 1.0 });
+        
+        // Canvasを作成してページをレンダリング
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        
+        const renderContext = {
+          canvasContext: context!,
+          viewport: viewport,
+        };
+        
+        await page.render(renderContext).promise;
+        
+        // 画像として圧縮
+        const imageBlob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => {
+            resolve(blob!);
+          }, 'image/jpeg', quality / 100);
+        });
+        
+        // 画像をPDFに追加
+        const imageBytes = await imageBlob.arrayBuffer();
+        const image = await pdfDoc.embedJpg(imageBytes);
+        
+        const pdfPage = pdfDoc.addPage([image.width, image.height]);
+        pdfPage.drawImage(image, {
+          x: 0,
+          y: 0,
+          width: image.width,
+          height: image.height,
+        });
+      }
+      
+      setProcessingMessage('PDFを保存中...');
+      setProcessingProgress(95);
+      
+      const pdfBytes = await pdfDoc.save();
+      
+      setProcessingProgress(100);
+      setProcessingMessage('完了!');
+      
+      return new Blob([pdfBytes], { type: 'application/pdf' });
+    } catch (error) {
+      console.error('PDF compression error:', error);
+      setProcessingMessage('エラーが発生しました');
+      
+      // フォールバック: 単純な再保存
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const pdfBytes = await pdfDoc.save({
+        useObjectStreams: false,
+        addDefaultPage: false,
+      });
+      return new Blob([pdfBytes], { type: 'application/pdf' });
+    }
   }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
@@ -213,12 +296,17 @@ export function ImageOptimizer() {
     
     // 初期圧縮処理を実行
     setIsProcessing(true);
+    setProcessingProgress(0);
     try {
       if (isImage) {
+        setProcessingMessage('画像を圧縮中...');
+        setProcessingProgress(50);
         const result = await compressImage(file, quality);
         setCompressedBlob(result.blob);
         setCompressedPreview(URL.createObjectURL(result.blob));
         setCompressedDimensions(result.dimensions);
+        setProcessingProgress(100);
+        setProcessingMessage('完了!');
       } else {
         const compressedPDF = await compressPDF(file, quality);
         setCompressedBlob(compressedPDF);
@@ -227,9 +315,12 @@ export function ImageOptimizer() {
       }
     } catch (error) {
       console.error('Compression error:', error);
+      setProcessingMessage('エラーが発生しました');
       alert('圧縮処理中にエラーが発生しました。');
     } finally {
       setIsProcessing(false);
+      setProcessingProgress(0);
+      setProcessingMessage('');
     }
   }, [quality, compressImage, compressPDF]);
 
@@ -252,20 +343,28 @@ export function ImageOptimizer() {
     setQuality(newQuality);
     if (originalFile) {
       setIsProcessing(true);
+      setProcessingProgress(0);
       try {
         if (fileType === 'image') {
+          setProcessingMessage('画像を圧縮中...');
+          setProcessingProgress(50);
           const result = await compressImage(originalFile, newQuality);
           setCompressedBlob(result.blob);
           setCompressedPreview(URL.createObjectURL(result.blob));
           setCompressedDimensions(result.dimensions);
+          setProcessingProgress(100);
+          setProcessingMessage('完了!');
         } else {
           const compressedPDF = await compressPDF(originalFile, newQuality);
           setCompressedBlob(compressedPDF);
         }
       } catch (error) {
         console.error('Compression error:', error);
+        setProcessingMessage('エラーが発生しました');
       } finally {
         setIsProcessing(false);
+        setProcessingProgress(0);
+        setProcessingMessage('');
       }
     }
   }, [originalFile, fileType, compressImage, compressPDF]);
@@ -288,6 +387,8 @@ export function ImageOptimizer() {
     setCompressedDimensions(null);
     setFileType('image');
     setQuality(80);
+    setProcessingProgress(0);
+    setProcessingMessage('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -323,10 +424,10 @@ export function ImageOptimizer() {
         {/* ヘッダー */}
         <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 bg-clip-text text-transparent mb-4">
-            画像圧縮・最適化ツール
+            画像・PDF圧縮ツール
           </h1>
           <p className="text-lg font-medium bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-6">
-            シンプルで高品質な画像圧縮ツール
+            シンプルで高品質な画像・PDF圧縮ツール
           </p>
           
           {/* 使い方説明 */}
@@ -493,12 +594,13 @@ export function ImageOptimizer() {
                         <div className="w-16 h-16 mb-4 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 animate-spin flex items-center justify-center">
                           <div className="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-yellow-500"></div>
                         </div>
-                        <div className="text-lg font-bold text-purple-600 mb-2 wiggle">お仕事おつかれさま！</div>
+                        <div className="text-lg font-bold text-purple-600 mb-2 wiggle">{processingMessage || 'お仕事おつかれさま！'}</div>
                         <div className="text-sm text-purple-500 pulse-heart">今日めっちゃいいことおきるよ！</div>
-                        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-                          <div className="w-full bg-purple-200 rounded-full h-2">
-                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
+                        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-48">
+                          <div className="w-full bg-purple-200 rounded-full h-3 mb-2">
+                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-300" style={{width: `${processingProgress}%`}}></div>
                           </div>
+                          <div className="text-xs text-purple-600 text-center font-medium">{Math.round(processingProgress)}%</div>
                         </div>
                       </div>
                     ) : compressedPreview ? (
