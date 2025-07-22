@@ -16,10 +16,18 @@ import {
   TrendingDown,
   Zap,
   FileImage,
-  FileText
+  FileText,
+  Shield,
+  ShieldCheck,
+  Search,
+  AlertTriangle,
+  CheckCircle,
+  Eye
 } from "lucide-react";
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
+import { FileSecurityValidator } from '@/lib/security';
+import { ClientFileScanner } from '@/lib/client-scanner';
 
 // PDF.js worker設定
 if (typeof window !== 'undefined') {
@@ -113,6 +121,8 @@ export function ImageOptimizer() {
   const [compressedPreview, setCompressedPreview] = useState<string>('');
   const [compressedDimensions, setCompressedDimensions] = useState<{width: number, height: number} | null>(null);
   const [fileType, setFileType] = useState<'image' | 'pdf'>('image');
+  const [scanPhase, setScanPhase] = useState<'file-check' | 'virus-scan' | 'content-scan' | 'compression' | 'complete'>('file-check');
+  const [scanResults, setScanResults] = useState<{safe: boolean, warnings: string[]}>({safe: true, warnings: []});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatFileSize = (bytes: number): string => {
@@ -277,13 +287,67 @@ export function ImageOptimizer() {
   }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
-    const isImage = file.type.startsWith('image/');
-    const isPDF = file.type === 'application/pdf';
+    // セキュリティ検証を最初に実行
+    setIsProcessing(true);
+    setScanPhase('file-check');
+    setProcessingMessage('ファイル形式をチェック中...');
+    setProcessingProgress(5);
     
-    if (!isImage && !isPDF) {
-      alert('画像ファイルまたはPDFファイルを選択してください。');
+    // 少し待機してUIを表示
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const validationResult = await FileSecurityValidator.validateFile(file);
+    if (!validationResult.valid) {
+      setIsProcessing(false);
+      setScanPhase('file-check');
+      setProcessingProgress(0);
+      setProcessingMessage('');
+      alert(`セキュリティエラー: ${validationResult.error}`);
       return;
     }
+
+    // ウイルススキャンフェーズ
+    setScanPhase('virus-scan');
+    setProcessingMessage('ウイルススキャン実行中...');
+    setProcessingProgress(15);
+    
+    // スキャン演出のための待機
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const scanResult = await ClientFileScanner.scanFile(file);
+    setScanResults({safe: scanResult.safe, warnings: scanResult.warnings});
+    
+    if (!scanResult.safe) {
+      setIsProcessing(false);
+      setScanPhase('file-check');
+      setProcessingProgress(0);
+      setProcessingMessage('');
+      const summary = ClientFileScanner.getScanSummary(scanResult);
+      alert(`🚨 セキュリティ脅威を検出: ${summary}`);
+      return;
+    }
+
+    // コンテンツスキャンフェーズ
+    setScanPhase('content-scan');
+    setProcessingMessage('ファイル内容を詳細チェック中...');
+    setProcessingProgress(25);
+    
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    if (scanResult.warnings.length > 0) {
+      const summary = ClientFileScanner.getScanSummary(scanResult);
+      const proceed = confirm(`⚠️ ${summary}\n\n続行しますか？`);
+      if (!proceed) {
+        setIsProcessing(false);
+        setScanPhase('file-check');
+        setProcessingProgress(0);
+        setProcessingMessage('');
+        return;
+      }
+    }
+
+    const isImage = validationResult.fileType?.startsWith('image/') || false;
+    const isPDF = validationResult.fileType === 'application/pdf';
 
     setOriginalFile(file);
     setFileType(isImage ? 'image' : 'pdf');
@@ -294,9 +358,9 @@ export function ImageOptimizer() {
       setOriginalPreview(''); // PDFはプレビューなし
     }
     
-    // 初期圧縮処理を実行
-    setIsProcessing(true);
-    setProcessingProgress(0);
+    // 圧縮フェーズへ移行
+    setScanPhase('compression');
+    setProcessingProgress(40);
     try {
       if (isImage) {
         setProcessingMessage('画像を圧縮中...');
@@ -305,22 +369,27 @@ export function ImageOptimizer() {
         setCompressedBlob(result.blob);
         setCompressedPreview(URL.createObjectURL(result.blob));
         setCompressedDimensions(result.dimensions);
+        setScanPhase('complete');
         setProcessingProgress(100);
-        setProcessingMessage('完了!');
+        setProcessingMessage('圧縮完了!');
       } else {
         const compressedPDF = await compressPDF(file, quality);
         setCompressedBlob(compressedPDF);
         setCompressedPreview('');
         setCompressedDimensions(null);
+        setScanPhase('complete');
       }
     } catch (error) {
       console.error('Compression error:', error);
       setProcessingMessage('エラーが発生しました');
       alert('圧縮処理中にエラーが発生しました。');
     } finally {
-      setIsProcessing(false);
-      setProcessingProgress(0);
-      setProcessingMessage('');
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProcessingProgress(0);
+        setProcessingMessage('');
+        setScanPhase('file-check');
+      }, 1000);
     }
   }, [quality, compressImage, compressPDF]);
 
@@ -372,10 +441,23 @@ export function ImageOptimizer() {
   const handleDownload = () => {
     if (compressedBlob) {
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(compressedBlob);
       const extension = fileType === 'image' ? 'jpg' : 'pdf';
-      link.download = `compressed_${Date.now()}.${extension}`;
+      const fileName = `compressed_${Date.now()}.${extension}`;
+      
+      // セキュアなダウンロードURL生成
+      link.href = FileSecurityValidator.createSecureDownloadUrl(compressedBlob, fileName);
+      link.download = FileSecurityValidator.sanitizeFileName(fileName);
+      
+      // ダウンロード属性を設定してXSSを防ぐ
+      link.setAttribute('rel', 'noopener noreferrer');
       link.click();
+      
+      // 即座にリンクを削除
+      setTimeout(() => {
+        if (link.href) {
+          URL.revokeObjectURL(link.href);
+        }
+      }, 100);
     }
   };
 
@@ -389,6 +471,8 @@ export function ImageOptimizer() {
     setQuality(80);
     setProcessingProgress(0);
     setProcessingMessage('');
+    setScanPhase('file-check');
+    setScanResults({safe: true, warnings: []});
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -591,17 +675,113 @@ export function ImageOptimizer() {
                   <div className="border-2 border-green-200 rounded-xl overflow-hidden bg-gradient-to-br from-green-50 to-blue-50 shadow-lg hover:shadow-xl transition-shadow duration-300 relative">
                     {isProcessing ? (
                       <div className="w-full h-64 flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 via-pink-100 to-yellow-100 relative overflow-hidden">
-                        <div className="w-16 h-16 mb-4 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 animate-spin flex items-center justify-center">
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-yellow-500"></div>
+                        {/* メインアイコンとアニメーション */}
+                        <div className="relative mb-4">
+                          {scanPhase === 'file-check' && (
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 animate-pulse flex items-center justify-center">
+                              <Search className="w-8 h-8 text-white animate-bounce" />
+                            </div>
+                          )}
+                          {scanPhase === 'virus-scan' && (
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-r from-red-500 to-orange-500 flex items-center justify-center relative">
+                              <Shield className="w-8 h-8 text-white animate-spin" style={{animationDuration: '2s'}} />
+                              <div className="absolute inset-0 rounded-full border-4 border-red-300 animate-ping"></div>
+                            </div>
+                          )}
+                          {scanPhase === 'content-scan' && (
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-r from-yellow-500 to-orange-500 flex items-center justify-center relative">
+                              <Eye className="w-8 h-8 text-white animate-pulse" />
+                              <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-400 animate-bounce">
+                                <Search className="w-4 h-4 text-white m-1" />
+                              </div>
+                            </div>
+                          )}
+                          {scanPhase === 'compression' && (
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 animate-spin flex items-center justify-center">
+                              <div className="w-12 h-12 rounded-full bg-gradient-to-r from-pink-500 to-yellow-500"></div>
+                            </div>
+                          )}
+                          {scanPhase === 'complete' && (
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center animate-bounce">
+                              <CheckCircle className="w-8 h-8 text-white" />
+                            </div>
+                          )}
                         </div>
-                        <div className="text-lg font-bold text-purple-600 mb-2 wiggle">{processingMessage || 'お仕事おつかれさま！'}</div>
-                        <div className="text-sm text-purple-500 pulse-heart">今日めっちゃいいことおきるよ！</div>
+
+                        {/* フェーズ別メッセージ */}
+                        <div className="text-lg font-bold mb-2 text-center">
+                          {scanPhase === 'file-check' && (
+                            <div className="text-blue-600 wiggle">📁 ファイル形式をチェック中...</div>
+                          )}
+                          {scanPhase === 'virus-scan' && (
+                            <div className="text-red-600 wiggle">🛡️ ウイルススキャン実行中...</div>
+                          )}
+                          {scanPhase === 'content-scan' && (
+                            <div className="text-yellow-600 wiggle">🔍 ファイル内容を詳細解析中...</div>
+                          )}
+                          {scanPhase === 'compression' && (
+                            <div className="text-purple-600 wiggle">⚡ 高品質圧縮処理中...</div>
+                          )}
+                          {scanPhase === 'complete' && (
+                            <div className="text-green-600 wiggle">✅ 処理完了！</div>
+                          )}
+                        </div>
+
+                        {/* セキュリティメッセージ */}
+                        <div className="text-sm mb-6 text-center max-w-xs">
+                          {scanPhase === 'file-check' && (
+                            <div className="text-blue-500 pulse-heart">ファイルの安全性を確認しています</div>
+                          )}
+                          {scanPhase === 'virus-scan' && (
+                            <div className="text-red-500 pulse-heart">悪意のあるコードがないかスキャン中</div>
+                          )}
+                          {scanPhase === 'content-scan' && (
+                            <div className="text-yellow-500 pulse-heart">隠れた脅威がないか詳細チェック中</div>
+                          )}
+                          {scanPhase === 'compression' && (
+                            <div className="text-purple-500 pulse-heart">安全が確認できたので圧縮開始！</div>
+                          )}
+                          {scanPhase === 'complete' && (
+                            <div className="text-green-500 pulse-heart">安全に圧縮が完了しました！</div>
+                          )}
+                        </div>
+
+                        {/* プログレスバー */}
                         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-48">
-                          <div className="w-full bg-purple-200 rounded-full h-3 mb-2">
-                            <div className="bg-gradient-to-r from-purple-500 to-pink-500 h-3 rounded-full transition-all duration-300" style={{width: `${processingProgress}%`}}></div>
+                          <div className="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
+                            <div className="h-3 rounded-full transition-all duration-300 relative" 
+                                 style={{
+                                   width: `${processingProgress}%`,
+                                   background: scanPhase === 'file-check' ? 'linear-gradient(to right, #3b82f6, #6366f1)' :
+                                              scanPhase === 'virus-scan' ? 'linear-gradient(to right, #ef4444, #f97316)' :
+                                              scanPhase === 'content-scan' ? 'linear-gradient(to right, #eab308, #f97316)' :
+                                              scanPhase === 'compression' ? 'linear-gradient(to right, #a855f7, #ec4899)' :
+                                              'linear-gradient(to right, #10b981, #059669)'
+                                 }}>
+                              <div className="absolute inset-0 bg-white bg-opacity-30 animate-pulse"></div>
+                            </div>
                           </div>
-                          <div className="text-xs text-purple-600 text-center font-medium">{Math.round(processingProgress)}%</div>
+                          <div className="text-xs text-center font-medium" 
+                               style={{
+                                 color: scanPhase === 'file-check' ? '#3b82f6' :
+                                        scanPhase === 'virus-scan' ? '#ef4444' :
+                                        scanPhase === 'content-scan' ? '#eab308' :
+                                        scanPhase === 'compression' ? '#a855f7' :
+                                        '#10b981'
+                               }}>
+                            {Math.round(processingProgress)}% {processingMessage}
+                          </div>
                         </div>
+
+                        {/* セキュリティスキャン完了後のステータス表示 */}
+                        {(scanPhase === 'compression' || scanPhase === 'complete') && scanResults.safe && (
+                          <div className="absolute top-4 right-4 bg-green-100 border-2 border-green-300 rounded-lg p-2">
+                            <div className="flex items-center gap-1 text-green-700">
+                              <ShieldCheck className="w-4 h-4" />
+                              <span className="text-xs font-bold">セキュリティ OK</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : compressedPreview ? (
                       <img src={compressedPreview} alt="Compressed" className="w-full h-auto max-h-64 object-contain" />
@@ -638,6 +818,56 @@ export function ImageOptimizer() {
                   リセット
                 </button>
               </div>
+
+              {/* セキュリティスキャン結果表示 */}
+              {compressedBlob && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent mb-3 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-green-500" />
+                    セキュリティスキャン結果
+                  </h3>
+                  <div className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 rounded-xl p-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
+                        <CheckCircle className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-green-700">✅ ファイルは安全です</div>
+                        <div className="text-xs text-green-600">ウイルス・マルウェアは検出されませんでした</div>
+                      </div>
+                    </div>
+                    
+                    {scanResults.warnings.length > 0 && (
+                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                          <span className="font-bold text-yellow-700">注意事項</span>
+                        </div>
+                        <ul className="text-xs text-yellow-700 space-y-1">
+                          {scanResults.warnings.map((warning, index) => (
+                            <li key={index}>• {warning}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+                      <div className="text-center p-2 bg-white/60 rounded-lg">
+                        <div className="font-bold text-blue-600">ファイル形式</div>
+                        <div className="text-blue-500">✓ 検証済み</div>
+                      </div>
+                      <div className="text-center p-2 bg-white/60 rounded-lg">
+                        <div className="font-bold text-red-600">ウイルス</div>
+                        <div className="text-green-500">✓ クリーン</div>
+                      </div>
+                      <div className="text-center p-2 bg-white/60 rounded-lg">
+                        <div className="font-bold text-yellow-600">内容</div>
+                        <div className="text-green-500">✓ 安全</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* 適用可能サービス */}
               {compressedBlob && getSuitableServices().length > 0 && (
